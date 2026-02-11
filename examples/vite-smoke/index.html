@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Secure Intake Client - Smoke Test</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 600px; margin: 2rem auto; padding: 0 1rem; }
+    .status { padding: 1rem; border-radius: 8px; margin: 1rem 0; }
+    .pass { background: #d4edda; color: #155724; }
+    .fail { background: #f8d7da; color: #721c24; }
+    .pending { background: #fff3cd; color: #856404; }
+    pre { background: #f4f4f4; padding: 1rem; overflow-x: auto; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <h1>Secure Intake Client</h1>
+  <h2>Bundler Smoke Test</h2>
+
+  <div id="crypto-status" class="status pending">Checking crypto capability...</div>
+  <div id="id-status" class="status pending">Testing ID generation...</div>
+
+  <h3>Results</h3>
+  <pre id="output">Loading...</pre>
+
+  <script type="module" src="./main.ts"></script>
+</body>
+</html>

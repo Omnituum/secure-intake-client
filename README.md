@@ -129,3 +129,103 @@ interface IntakeConfig {
 - **Rate limiting**: Client-side throttling (bypassed for retries)
 - **Size guards**: Pre-encryption and post-encryption limits
 - **Honeypot**: Optional bot detection field
+
+## Bundler Configuration
+
+This package uses **Kyber WASM** for post-quantum encryption. Most modern bundlers handle this automatically, but you may need configuration for certain setups.
+
+### Vite (Recommended)
+
+Works out of the box. The `kyber-crystals` WASM is loaded automatically.
+
+```ts
+// vite.config.ts - no special config needed
+export default defineConfig({
+  // ...
+});
+```
+
+If you see CSP errors, add to your server headers:
+```
+Content-Security-Policy: script-src 'self' 'wasm-unsafe-eval'
+```
+
+### Webpack 5
+
+Enable WASM support:
+
+```js
+// webpack.config.js
+module.exports = {
+  experiments: {
+    asyncWebAssembly: true,
+  },
+};
+```
+
+### Next.js
+
+```js
+// next.config.js
+module.exports = {
+  webpack: (config) => {
+    config.experiments = {
+      ...config.experiments,
+      asyncWebAssembly: true,
+    };
+    return config;
+  },
+};
+```
+
+### Capability Detection
+
+Always check crypto capability before showing forms:
+
+```ts
+const crypto = await checkCryptoCapability();
+
+if (!crypto.available) {
+  // Show fallback UI or error message
+  console.error(crypto.error);
+  // crypto.webCrypto: boolean - Web Crypto API available
+  // crypto.kyber: boolean - Kyber WASM loaded successfully
+}
+```
+
+Common failure reasons:
+- **Missing WebCrypto**: Very old browser or non-HTTPS context
+- **Missing Kyber**: CSP blocking WASM, Safari privacy mode, or bundler misconfiguration
+
+### Forcing Re-check
+
+If capability detection fails initially (e.g., race condition with extensions):
+
+```ts
+import { resetCryptoCapabilityCache, checkCryptoCapability } from "@omnituum/secure-intake-client";
+
+// Force fresh check
+resetCryptoCapabilityCache();
+const crypto = await checkCryptoCapability(true);
+```
+
+## Browser Support
+
+| Browser | Minimum Version |
+|---------|-----------------|
+| Chrome  | 89+             |
+| Firefox | 89+             |
+| Safari  | 15+             |
+| Edge    | 89+             |
+
+Requires:
+- Web Crypto API (`crypto.getRandomValues`)
+- WebAssembly support
+- ES2022 features
+
+## Security
+
+See [SECURITY.md](./SECURITY.md) for:
+- Boundary invariant (server never sees plaintext)
+- Cryptographic primitives used
+- Vulnerability reporting

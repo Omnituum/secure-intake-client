@@ -1,0 +1,67 @@
+{
+  "name": "@omnituum/secure-intake-client",
+  "version": "0.1.0",
+  "description": "Post-quantum encrypted intake form submission client",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./presets/pilot-access": {
+      "types": "./dist/presets/pilot-access.d.ts",
+      "import": "./dist/presets/pilot-access.js",
+      "require": "./dist/presets/pilot-access.cjs"
+    }
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "clean": "rm -rf dist",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx test/normalization.test.ts",
+    "pretest": "npm run build"
+  },
+  "keywords": [
+    "intake",
+    "encrypted",
+    "post-quantum",
+    "kyber",
+    "form",
+    "submission",
+    "pii",
+    "privacy",
+    "hybrid-encryption"
+  ],
+  "author": "Omnituum",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Omnituum/secure-intake-client.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Omnituum/secure-intake-client/issues"
+  },
+  "homepage": "https://github.com/Omnituum/secure-intake-client#readme",
+  "dependencies": {
+    "@omnituum/pqc-shared": "^0.3.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "tsup": "^8.1.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.5.2"
+  },
+  "peerDependencies": {
+    "typescript": ">=5.0.0"
+  }
+}

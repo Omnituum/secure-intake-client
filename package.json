@@ -35,7 +35,8 @@
     "clean": "rm -rf dist",
     "typecheck": "tsc --noEmit",
     "test": "tsx test/normalization.test.ts",
-    "pretest": "npm run build"
+    "pretest": "npm run build",
+    "prepare": "npm run build"
   },
   "keywords": [
     "intake",

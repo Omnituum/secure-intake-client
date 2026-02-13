@@ -92,6 +92,7 @@ export async function submitSecureIntake(
     }
 
     const requireKyber = config.requireKyber === true;
+    const attemptHybrid = config.attemptHybrid !== false; // default true
 
     // Encrypt canonicalized payload
     const plaintext = JSON.stringify(canonicalized);
@@ -110,42 +111,48 @@ export async function submitSecureIntake(
     let encrypted: HybridEnvelope;
     let pqcUsed = false;
 
-    try {
-      // This dynamically imports pqc-shared — the ONLY place it's loaded.
-      // Under strict CSP this will fail, and we fall back below.
-      encrypted = await tryHybridEncryptLazy(plaintextBytes, {
-        x25519PubHex: config.publicKeys.x25519PubHex,
-        kyberPubB64: config.publicKeys.kyberPubB64,
-      });
-      pqcUsed = true;
-      // Update capability cache now that hybrid succeeded
-      setCachedKyberStatus(true);
-    } catch (hybridErr) {
-      if (requireKyber) {
-        // Strict mode: no fallback allowed
-        return {
-          ok: false,
-          error: "Post-quantum encryption unavailable in this environment (WASM blocked by CSP or unsupported browser). Cannot submit in strict hybrid mode.",
-        };
-      }
-      // Best-effort mode: fall back to X25519-only
-      const rawMsg = hybridErr instanceof Error ? hybridErr.message : String(hybridErr);
-      const reason: DowngradeReason = classifyDowngradeReason(rawMsg);
-      const downgradeEvent: DowngradeEvent = {
-        event: "omnituum.crypto.downgrade",
-        reason,
-        suite: X25519_ONLY_SUITE,
-        pqcUsed: false,
-        requireKyber: false,
-        userAgent: typeof navigator !== "undefined" ? navigator.userAgent : undefined,
-        cspHint: reason === "wasm_blocked"
-          ? "WASM compilation likely blocked by Content-Security-Policy"
-          : undefined,
-        ...(config.debugDowngrade ? { rawError: rawMsg } : {}),
-      };
-      console.warn("[Intake] Crypto downgrade:", downgradeEvent);
-      config.onDowngrade?.(downgradeEvent);
+    if (!attemptHybrid) {
+      // Hybrid explicitly disabled — go straight to X25519-only.
+      // No WASM chunk loaded, no dynamic import, no abort risk.
       encrypted = await encryptX25519Only(plaintextBytes, config.publicKeys.x25519PubHex);
+    } else {
+      try {
+        // This dynamically imports pqc-shared — the ONLY place it's loaded.
+        // Under strict CSP this will fail, and we fall back below.
+        encrypted = await tryHybridEncryptLazy(plaintextBytes, {
+          x25519PubHex: config.publicKeys.x25519PubHex,
+          kyberPubB64: config.publicKeys.kyberPubB64,
+        });
+        pqcUsed = true;
+        // Update capability cache now that hybrid succeeded
+        setCachedKyberStatus(true);
+      } catch (hybridErr) {
+        if (requireKyber) {
+          // Strict mode: no fallback allowed
+          return {
+            ok: false,
+            error: "Post-quantum encryption unavailable in this environment (WASM blocked by CSP or unsupported browser). Cannot submit in strict hybrid mode.",
+          };
+        }
+        // Best-effort mode: fall back to X25519-only
+        const rawMsg = hybridErr instanceof Error ? hybridErr.message : String(hybridErr);
+        const reason: DowngradeReason = classifyDowngradeReason(rawMsg);
+        const downgradeEvent: DowngradeEvent = {
+          event: "omnituum.crypto.downgrade",
+          reason,
+          suite: X25519_ONLY_SUITE,
+          pqcUsed: false,
+          requireKyber: false,
+          userAgent: typeof navigator !== "undefined" ? navigator.userAgent : undefined,
+          cspHint: reason === "wasm_blocked"
+            ? "WASM compilation likely blocked by Content-Security-Policy"
+            : undefined,
+          ...(config.debugDowngrade ? { rawError: rawMsg } : {}),
+        };
+        console.warn("[Intake] Crypto downgrade:", downgradeEvent);
+        config.onDowngrade?.(downgradeEvent);
+        encrypted = await encryptX25519Only(plaintextBytes, config.publicKeys.x25519PubHex);
+      }
     }
 
     // Build envelope with pqcUsed flag for truthful reporting

@@ -80,6 +80,23 @@ export interface IntakeConfig {
   requireKyber?: boolean;
 
   /**
+   * Whether to attempt hybrid (PQC) encryption at all (default: true).
+   * Set to false in strict-CSP environments (e.g., defense portals)
+   * to skip the WASM chunk entirely — goes straight to X25519-only.
+   *
+   * When false:
+   * - No dynamic import of pqc-shared occurs
+   * - No WASM compilation is attempted
+   * - No downgrade event is emitted (not a "downgrade", it's by design)
+   * - Envelope suite will always be "x25519"
+   *
+   * When true (default):
+   * - Tries hybrid first via dynamic import
+   * - Falls back to X25519-only if hybrid fails (when requireKyber is false)
+   */
+  attemptHybrid?: boolean;
+
+  /**
    * Callback fired when encryption downgrades from hybrid to X25519-only.
    * Local-only by default (console.warn). Provide a callback to pipe
    * to your own telemetry. Never fires in strict mode (requireKyber: true)

@@ -86,17 +86,40 @@ export interface IntakeConfig {
    * because strict mode throws instead of downgrading.
    */
   onDowngrade?: (event: DowngradeEvent) => void;
+
+  /**
+   * Include raw error messages in downgrade events (default: false).
+   * When false, only the enum reason code is included — safe for telemetry.
+   * Enable only for local debugging; raw errors may contain internal paths.
+   */
+  debugDowngrade?: boolean;
 }
+
+/**
+ * Known downgrade reason codes.
+ * Only these values are emitted in the `reason` field by default.
+ * Raw error details are never included unless `debugDowngrade: true` is set.
+ */
+export type DowngradeReason =
+  | "wasm_blocked"       // WASM compilation blocked by CSP
+  | "module_load_failed" // dynamic import() of pqc-shared failed
+  | "kyber_unavailable"  // Kyber runtime reports not available
+  | "encrypt_failed"     // hybridEncrypt threw during execution
+  | "unknown";           // catch-all for unexpected errors
 
 /**
  * Structured event emitted when PQC encryption is unavailable
  * and the client falls back to X25519-only.
+ *
+ * Safe to forward to telemetry: `reason` is an enum code (never a raw
+ * error message), `userAgent` and `cspHint` are the only contextual
+ * fields, and `rawError` is only present when `debugDowngrade: true`.
  */
 export interface DowngradeEvent {
   /** Fixed event name for structured logging */
   event: "omnituum.crypto.downgrade";
-  /** Why hybrid encryption failed */
-  reason: string;
+  /** Enum code for why hybrid encryption failed (safe to log) */
+  reason: DowngradeReason;
   /** Suite used for the actual envelope */
   suite: string;
   /** Whether PQC was used (always false for downgrades) */
@@ -107,6 +130,8 @@ export interface DowngradeEvent {
   userAgent?: string;
   /** Hint about CSP configuration, if detectable */
   cspHint?: string;
+  /** Raw error message — only present when config.debugDowngrade is true */
+  rawError?: string;
 }
 
 /**

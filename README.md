@@ -223,6 +223,35 @@ Requires:
 - WebAssembly support
 - ES2022 features
 
+## Deployment Postures
+
+This client supports two deployment modes depending on the CSP environment:
+
+### Marketing / Permissive CSP
+
+- **`requireKyber: true`** — strict mode, hybrid encryption required
+- CSP must permit WASM: `script-src 'self' 'wasm-unsafe-eval'`
+- `pqc-shared` (Kyber WASM) loads via dynamic import on first submit
+- Envelope suite: `x25519+kyber768`, `pqcUsed: true`
+- If WASM is blocked, submission fails with a policy error (no fallback)
+
+### Defense / Strict CSP
+
+- **`requireKyber: false`** — best-effort mode, graceful fallback
+- CSP: `script-src 'self'` (no `unsafe-eval`, no `wasm-unsafe-eval`)
+- WASM never loads (dynamic import fails silently, caught by try/catch)
+- Envelope suite: `x25519`, `pqcUsed: false`
+- Downgrade event emitted to `onDowngrade` callback for telemetry
+- Page load never touches `WebAssembly.instantiate()`
+
+### Invariant
+
+No top-level imports from `@omnituum/pqc-shared` exist in this package.
+The only reference is a dynamic `import()` inside `src/hybrid-lazy.ts`,
+which is only called during form submission (never on page load).
+This is enforced by a build assertion in the defense bundle and a
+shape contract test in the test suite.
+
 ## Security
 
 See [SECURITY.md](./SECURITY.md) for:

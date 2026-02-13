@@ -39,6 +39,7 @@ export type {
   PendingSubmission,
   HybridPublicKeys,
   DowngradeEvent,
+  DowngradeReason,
 } from "./types.js";
 
 export type { HybridEnvelope } from "./envelope-types.js";

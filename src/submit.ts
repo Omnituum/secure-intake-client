@@ -21,7 +21,7 @@ import {
 } from "./primitives.js";
 import { tryHybridEncryptLazy } from "./hybrid-lazy.js";
 import { setCachedKyberStatus } from "./capability.js";
-import type { IntakeConfig, SubmitOptions, SubmitResult, DowngradeEvent } from "./types.js";
+import type { IntakeConfig, SubmitOptions, SubmitResult, DowngradeEvent, DowngradeReason } from "./types.js";
 import type { HybridEnvelope } from "./envelope-types.js";
 import { generateRequestId } from "./id.js";
 import { checkCryptoCapability } from "./capability.js";
@@ -129,7 +129,8 @@ export async function submitSecureIntake(
         };
       }
       // Best-effort mode: fall back to X25519-only
-      const reason = hybridErr instanceof Error ? hybridErr.message : String(hybridErr);
+      const rawMsg = hybridErr instanceof Error ? hybridErr.message : String(hybridErr);
+      const reason: DowngradeReason = classifyDowngradeReason(rawMsg);
       const downgradeEvent: DowngradeEvent = {
         event: "omnituum.crypto.downgrade",
         reason,
@@ -137,9 +138,10 @@ export async function submitSecureIntake(
         pqcUsed: false,
         requireKyber: false,
         userAgent: typeof navigator !== "undefined" ? navigator.userAgent : undefined,
-        cspHint: reason.includes("CSP") || reason.includes("wasm") || reason.includes("WASM")
+        cspHint: reason === "wasm_blocked"
           ? "WASM compilation likely blocked by Content-Security-Policy"
           : undefined,
+        ...(config.debugDowngrade ? { rawError: rawMsg } : {}),
       };
       console.warn("[Intake] Crypto downgrade:", downgradeEvent);
       config.onDowngrade?.(downgradeEvent);
@@ -210,6 +212,24 @@ export async function submitSecureIntake(
           : "Submission failed. Please try again.",
     };
   }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Downgrade reason classification
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** Map raw error messages to a safe enum code (never exposes internal paths). */
+function classifyDowngradeReason(msg: string): DowngradeReason {
+  const lower = msg.toLowerCase();
+  if (lower.includes("csp") || lower.includes("wasm") || lower.includes("webassembly"))
+    return "wasm_blocked";
+  if (lower.includes("failed to load") || lower.includes("module") || lower.includes("import"))
+    return "module_load_failed";
+  if (lower.includes("unavailable") || lower.includes("not available"))
+    return "kyber_unavailable";
+  if (lower.includes("encrypt"))
+    return "encrypt_failed";
+  return "unknown";
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

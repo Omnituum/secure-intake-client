@@ -1,9 +1,13 @@
 /**
- * Core submission logic
+ * Core submission logic.
+ *
+ * Zero top-level imports from @omnituum/pqc-shared.
+ * All primitives come from local ./primitives.ts (pure JS).
+ * Hybrid encryption is lazy-loaded via ./hybrid-lazy.ts.
  */
 
 import {
-  hybridEncrypt,
+  nacl,
   rand32,
   rand24,
   b64,
@@ -14,13 +18,11 @@ import {
   secretboxRaw,
   ENVELOPE_VERSION,
   ENVELOPE_AEAD,
-} from "@omnituum/pqc-shared";
-import type { HybridEnvelope } from "@omnituum/pqc-shared";
-
-// tweetnacl used for X25519-only fallback (no WASM dependency)
-// Resolved transitively via @omnituum/pqc-shared → tweetnacl
-import nacl from "tweetnacl";
+} from "./primitives.js";
+import { tryHybridEncryptLazy } from "./hybrid-lazy.js";
+import { setCachedKyberStatus } from "./capability.js";
 import type { IntakeConfig, SubmitOptions, SubmitResult, DowngradeEvent } from "./types.js";
+import type { HybridEnvelope } from "./envelope-types.js";
 import { generateRequestId } from "./id.js";
 import { checkCryptoCapability } from "./capability.js";
 import {
@@ -33,7 +35,7 @@ import { checkRateLimit, recordSubmit } from "./ratelimit.js";
 // Defaults
 const DEFAULT_VERSION = "loggie.intake.v1";
 const DEFAULT_MAX_PLAINTEXT = 32 * 1024; // 32KB
-const DEFAULT_MAX_ENVELOPE = 56 * 1024; // 56KB (leaves headroom for HTTP overhead under 64KB server limit)
+const DEFAULT_MAX_ENVELOPE = 56 * 1024; // 56KB
 
 /**
  * Submit an encrypted intake request.
@@ -50,7 +52,6 @@ export async function submitSecureIntake(
 ): Promise<SubmitResult> {
   try {
     // Honeypot check - bots often fill hidden fields
-    // Don't even call the endpoint, just fake success
     if (opts.honeypot) {
       return { ok: true, id: "", status: "created" };
     }
@@ -81,7 +82,7 @@ export async function submitSecureIntake(
       };
     }
 
-    // Check crypto capability
+    // Check crypto capability (WebCrypto only — no WASM probe)
     const crypto = await checkCryptoCapability();
     if (!crypto.available) {
       return {
@@ -91,14 +92,6 @@ export async function submitSecureIntake(
     }
 
     const requireKyber = config.requireKyber === true;
-
-    // Policy enforcement: strict hybrid mode requires PQC
-    if (requireKyber && !crypto.kyber) {
-      return {
-        ok: false,
-        error: "Post-quantum encryption unavailable in this environment (WASM blocked by CSP or unsupported browser). Cannot submit in strict hybrid mode.",
-      };
-    }
 
     // Encrypt canonicalized payload
     const plaintext = JSON.stringify(canonicalized);
@@ -113,22 +106,29 @@ export async function submitSecureIntake(
       };
     }
 
-    // Encrypt: try hybrid first, fall back to X25519-only if allowed
+    // Encrypt: attempt hybrid (lazy), fall back to X25519-only if allowed
     let encrypted: HybridEnvelope;
     let pqcUsed = false;
 
     try {
-      encrypted = await hybridEncrypt(plaintextBytes, {
+      // This dynamically imports pqc-shared — the ONLY place it's loaded.
+      // Under strict CSP this will fail, and we fall back below.
+      encrypted = await tryHybridEncryptLazy(plaintextBytes, {
         x25519PubHex: config.publicKeys.x25519PubHex,
         kyberPubB64: config.publicKeys.kyberPubB64,
       });
       pqcUsed = true;
+      // Update capability cache now that hybrid succeeded
+      setCachedKyberStatus(true);
     } catch (hybridErr) {
       if (requireKyber) {
-        // Strict mode: propagate failure
-        throw hybridErr;
+        // Strict mode: no fallback allowed
+        return {
+          ok: false,
+          error: "Post-quantum encryption unavailable in this environment (WASM blocked by CSP or unsupported browser). Cannot submit in strict hybrid mode.",
+        };
       }
-      // Best-effort mode: Kyber failed (CSP/WASM), fall back to X25519-only
+      // Best-effort mode: fall back to X25519-only
       const reason = hybridErr instanceof Error ? hybridErr.message : String(hybridErr);
       const downgradeEvent: DowngradeEvent = {
         event: "omnituum.crypto.downgrade",
@@ -137,7 +137,7 @@ export async function submitSecureIntake(
         pqcUsed: false,
         requireKyber: false,
         userAgent: typeof navigator !== "undefined" ? navigator.userAgent : undefined,
-        cspHint: reason.includes("CSP") || reason.includes("wasm")
+        cspHint: reason.includes("CSP") || reason.includes("wasm") || reason.includes("WASM")
           ? "WASM compilation likely blocked by Content-Security-Policy"
           : undefined,
       };
@@ -164,7 +164,7 @@ export async function submitSecureIntake(
       };
     }
 
-    // Mark as pending before network call (minimal: just ID)
+    // Mark as pending before network call
     setPendingId(id, storageKey);
 
     // Submit to intake endpoint
@@ -176,21 +176,17 @@ export async function submitSecureIntake(
 
     const status = response.status;
 
-    // Handle response based on status
     if (status === 201 || status === 200) {
-      // Success or duplicate - clear pending
       const result = await response.json();
       clearPendingSubmission(storageKey);
       if (result.ok) {
         recordSubmit();
         return { ok: true, id: result.id, status: result.status };
       }
-      // Unexpected: 2xx but ok=false
       return { ok: false, error: result.error || "Unknown error" };
     }
 
     if (status >= 400 && status < 500) {
-      // Client error (4xx) - won't succeed by retrying, clear pending
       clearPendingSubmission(storageKey);
       const errorData = await response.json().catch(() => ({}));
       return {
@@ -199,14 +195,12 @@ export async function submitSecureIntake(
       };
     }
 
-    // Server error (5xx) or other - keep pending for retry
     const errorData = await response.json().catch(() => ({}));
     return {
       ok: false,
       error: errorData.error || `Server error: ${status}. Please try again.`,
     };
   } catch (err) {
-    // Network error - keep pending for retry
     console.error("Intake submission error:", err);
     return {
       ok: false,
@@ -219,7 +213,7 @@ export async function submitSecureIntake(
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// X25519-ONLY FALLBACK (no WASM, no Kyber)
+// X25519-ONLY ENCRYPTION (pure JS, no WASM, no pqc-shared)
 // ═══════════════════════════════════════════════════════════════════════════
 
 /** Suite identifier for X25519-only envelopes (no Kyber) */
@@ -233,8 +227,9 @@ function hkdfFlex(ikm: Uint8Array, salt: string, info: string): Uint8Array {
  * Encrypt using X25519 ECDH only (classical, no WASM required).
  * Produces an envelope structurally compatible with HybridEnvelope
  * but with empty Kyber fields and suite set to "x25519".
+ *
+ * @internal Exported for golden-vector tests
  */
-/** @internal Exported for golden-vector tests */
 export async function encryptX25519Only(
   plaintext: Uint8Array,
   recipientX25519PubHex: string
@@ -256,14 +251,13 @@ export async function encryptX25519Only(
 
   return {
     v: ENVELOPE_VERSION,
-    suite: X25519_ONLY_SUITE as typeof import("@omnituum/pqc-shared").ENVELOPE_SUITE,
+    suite: X25519_ONLY_SUITE,
     aead: ENVELOPE_AEAD,
     x25519Epk: toHex(ephKp.publicKey),
     x25519Wrap: {
       nonce: b64(wrapNonce),
       wrapped: b64(wrapped),
     },
-    // Empty Kyber fields — envelope is X25519-only
     kyberKemCt: "",
     kyberWrap: { nonce: "", wrapped: "" },
     contentNonce: b64(contentNonce),

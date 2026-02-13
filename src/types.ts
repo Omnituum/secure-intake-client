@@ -2,8 +2,14 @@
  * Shared types for secure intake client
  */
 
-// Re-export from pqc-shared for consumers
-export type { HybridPublicKeys } from "@omnituum/pqc-shared";
+/**
+ * Public keys for hybrid encryption (matches pqc-shared HybridPublicKeys).
+ * Defined locally to avoid any pqc-shared import.
+ */
+export interface HybridPublicKeys {
+  x25519PubHex: string;
+  kyberPubB64: string;
+}
 
 /**
  * Result of a submission attempt

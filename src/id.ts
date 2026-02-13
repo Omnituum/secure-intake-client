@@ -2,7 +2,7 @@
  * Deterministic ID generation
  */
 
-import { blake3 } from "@omnituum/pqc-shared";
+import { blake3 } from "./primitives.js";
 
 /**
  * Convert Uint8Array to hex string

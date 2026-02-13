@@ -2,36 +2,9 @@
  * @omnituum/secure-intake-client
  *
  * Post-quantum encrypted intake form submission client.
- *
- * @example
- * ```ts
- * import { submitSecureIntake, checkCryptoCapability } from "@omnituum/secure-intake-client";
- *
- * const config = {
- *   endpoint: "/api/intake",
- *   publicKeys: {
- *     x25519PubHex: "...",
- *     kyberPubB64: "...",
- *   },
- *   canonicalize: (data) => ({
- *     kind: "my_form",
- *     email: data.email.trim().toLowerCase(),
- *     // ... normalize fields for deterministic hashing
- *   }),
- * };
- *
- * // Check capability first
- * const crypto = await checkCryptoCapability();
- * if (!crypto.available) {
- *   console.error(crypto.error);
- * }
- *
- * // Submit
- * const result = await submitSecureIntake(formData, config);
- * if (result.ok) {
- *   console.log("Submitted:", result.id, result.status);
- * }
- * ```
+ * Zero top-level imports from @omnituum/pqc-shared — hybrid encryption
+ * is loaded lazily via dynamic import to prevent WASM side effects
+ * under strict CSP.
  */
 
 // Core submission
@@ -67,3 +40,5 @@ export type {
   HybridPublicKeys,
   DowngradeEvent,
 } from "./types.js";
+
+export type { HybridEnvelope } from "./envelope-types.js";

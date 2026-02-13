@@ -60,7 +60,9 @@
   },
   "homepage": "https://github.com/Omnituum/secure-intake-client#readme",
   "dependencies": {
-    "@omnituum/pqc-shared": "^0.3.0"
+    "@noble/hashes": "~2.0.0",
+    "@omnituum/pqc-shared": "^0.3.0",
+    "tweetnacl": "^1.0.3"
   },
   "devDependencies": {
     "@types/node": "^20.14.0",

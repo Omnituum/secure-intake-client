@@ -36,16 +36,15 @@ export async function checkCryptoCapability(
     kyber = false;
   }
 
-  const available = webCrypto && kyber;
-  const errors: string[] = [];
-  if (!webCrypto) errors.push("WebCrypto");
-  if (!kyber) errors.push("Kyber (WASM)");
+  // available = can encrypt at all (WebCrypto is the only hard requirement)
+  // kyber = can do PQC (reported separately for UI badges + policy enforcement)
+  const available = webCrypto;
 
   cachedCapability = {
     available,
     webCrypto,
     kyber,
-    error: available ? undefined : `Missing: ${errors.join(", ")}`,
+    error: !webCrypto ? "Missing: WebCrypto" : !kyber ? "PQC unavailable (WASM blocked or unsupported)" : undefined,
   };
 
   return cachedCapability;

@@ -2,7 +2,24 @@
  * Core submission logic
  */
 
-import { hybridEncrypt } from "@omnituum/pqc-shared";
+import {
+  hybridEncrypt,
+  rand32,
+  rand24,
+  b64,
+  toHex,
+  fromHex,
+  hkdfSha256,
+  u8,
+  secretboxRaw,
+  ENVELOPE_VERSION,
+  ENVELOPE_AEAD,
+} from "@omnituum/pqc-shared";
+import type { HybridEnvelope } from "@omnituum/pqc-shared";
+
+// tweetnacl used for X25519-only fallback (no WASM dependency)
+// Resolved transitively via @omnituum/pqc-shared → tweetnacl
+import nacl from "tweetnacl";
 import type { IntakeConfig, SubmitOptions, SubmitResult } from "./types.js";
 import { generateRequestId } from "./id.js";
 import { checkCryptoCapability } from "./capability.js";
@@ -64,12 +81,22 @@ export async function submitSecureIntake(
       };
     }
 
-    // Check crypto capability (defense in depth - UI should block too)
+    // Check crypto capability
     const crypto = await checkCryptoCapability();
     if (!crypto.available) {
       return {
         ok: false,
         error: `Your browser cannot securely submit this form. ${crypto.error}. Please use a modern browser (Chrome, Firefox, Safari, Edge).`,
+      };
+    }
+
+    const requireKyber = config.requireKyber === true;
+
+    // Policy enforcement: strict hybrid mode requires PQC
+    if (requireKyber && !crypto.kyber) {
+      return {
+        ok: false,
+        error: "Post-quantum encryption unavailable in this environment (WASM blocked by CSP or unsupported browser). Cannot submit in strict hybrid mode.",
       };
     }
 
@@ -86,15 +113,35 @@ export async function submitSecureIntake(
       };
     }
 
-    const encrypted = await hybridEncrypt(plaintextBytes, {
-      x25519PubHex: config.publicKeys.x25519PubHex,
-      kyberPubB64: config.publicKeys.kyberPubB64,
-    });
+    // Encrypt: try hybrid first, fall back to X25519-only if allowed
+    let encrypted: HybridEnvelope;
+    let pqcUsed = false;
 
-    // Build envelope
+    try {
+      encrypted = await hybridEncrypt(plaintextBytes, {
+        x25519PubHex: config.publicKeys.x25519PubHex,
+        kyberPubB64: config.publicKeys.kyberPubB64,
+      });
+      pqcUsed = true;
+    } catch (hybridErr) {
+      if (requireKyber) {
+        // Strict mode: propagate failure
+        throw hybridErr;
+      }
+      // Best-effort mode: Kyber failed (CSP/WASM), retry X25519-only
+      // hybridEncrypt does X25519 wrap before Kyber, so we call it again
+      // but we need to bypass Kyber. Since pqc-shared doesn't expose
+      // X25519-only encrypt, we replicate the X25519 path using the same
+      // primitives that hybridEncrypt uses internally.
+      console.warn("[Intake] Hybrid encryption failed, falling back to X25519-only:", hybridErr);
+      encrypted = await encryptX25519Only(plaintextBytes, config.publicKeys.x25519PubHex);
+    }
+
+    // Build envelope with pqcUsed flag for truthful reporting
     const envelope = {
       v: version,
       id,
+      pqcUsed,
       encrypted: JSON.stringify(encrypted),
     };
 
@@ -160,4 +207,59 @@ export async function submitSecureIntake(
           : "Submission failed. Please try again.",
     };
   }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// X25519-ONLY FALLBACK (no WASM, no Kyber)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** Suite identifier for X25519-only envelopes (no Kyber) */
+const X25519_ONLY_SUITE = "x25519" as const;
+
+function hkdfFlex(ikm: Uint8Array, salt: string, info: string): Uint8Array {
+  return hkdfSha256(ikm, { salt: u8(salt), info: u8(info), length: 32 });
+}
+
+/**
+ * Encrypt using X25519 ECDH only (classical, no WASM required).
+ * Produces an envelope structurally compatible with HybridEnvelope
+ * but with empty Kyber fields and suite set to "x25519".
+ */
+async function encryptX25519Only(
+  plaintext: Uint8Array,
+  recipientX25519PubHex: string
+): Promise<HybridEnvelope> {
+  // 1. Generate random content key
+  const CK = rand32();
+
+  // 2. Encrypt content with content key (NaCl secretbox)
+  const contentNonce = rand24();
+  const ciphertext = secretboxRaw(CK, plaintext, contentNonce);
+
+  // 3. Wrap content key with X25519 ECDH
+  const ephKp = nacl.box.keyPair();
+  const recipientPk = fromHex(recipientX25519PubHex);
+  const shared = nacl.scalarMult(ephKp.secretKey, recipientPk);
+  const kek = hkdfFlex(shared, "omnituum/x25519", "wrap-ck");
+  const wrapNonce = rand24();
+  const wrapped = secretboxRaw(kek, CK, wrapNonce);
+
+  return {
+    v: ENVELOPE_VERSION,
+    suite: X25519_ONLY_SUITE as typeof import("@omnituum/pqc-shared").ENVELOPE_SUITE,
+    aead: ENVELOPE_AEAD,
+    x25519Epk: toHex(ephKp.publicKey),
+    x25519Wrap: {
+      nonce: b64(wrapNonce),
+      wrapped: b64(wrapped),
+    },
+    // Empty Kyber fields — envelope is X25519-only
+    kyberKemCt: "",
+    kyberWrap: { nonce: "", wrapped: "" },
+    contentNonce: b64(contentNonce),
+    ciphertext: b64(ciphertext),
+    meta: {
+      createdAt: new Date().toISOString(),
+    },
+  };
 }

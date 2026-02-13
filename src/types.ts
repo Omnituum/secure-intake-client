@@ -72,6 +72,35 @@ export interface IntakeConfig {
 
   /** Require Kyber to be available (default: false - falls back gracefully) */
   requireKyber?: boolean;
+
+  /**
+   * Callback fired when encryption downgrades from hybrid to X25519-only.
+   * Local-only by default (console.warn). Provide a callback to pipe
+   * to your own telemetry. Never fires in strict mode (requireKyber: true)
+   * because strict mode throws instead of downgrading.
+   */
+  onDowngrade?: (event: DowngradeEvent) => void;
+}
+
+/**
+ * Structured event emitted when PQC encryption is unavailable
+ * and the client falls back to X25519-only.
+ */
+export interface DowngradeEvent {
+  /** Fixed event name for structured logging */
+  event: "omnituum.crypto.downgrade";
+  /** Why hybrid encryption failed */
+  reason: string;
+  /** Suite used for the actual envelope */
+  suite: string;
+  /** Whether PQC was used (always false for downgrades) */
+  pqcUsed: false;
+  /** Policy setting at time of downgrade */
+  requireKyber: false;
+  /** Browser user agent, if available */
+  userAgent?: string;
+  /** Hint about CSP configuration, if detectable */
+  cspHint?: string;
 }
 
 /**

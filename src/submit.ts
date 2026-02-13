@@ -20,7 +20,7 @@ import type { HybridEnvelope } from "@omnituum/pqc-shared";
 // tweetnacl used for X25519-only fallback (no WASM dependency)
 // Resolved transitively via @omnituum/pqc-shared → tweetnacl
 import nacl from "tweetnacl";
-import type { IntakeConfig, SubmitOptions, SubmitResult } from "./types.js";
+import type { IntakeConfig, SubmitOptions, SubmitResult, DowngradeEvent } from "./types.js";
 import { generateRequestId } from "./id.js";
 import { checkCryptoCapability } from "./capability.js";
 import {
@@ -128,12 +128,21 @@ export async function submitSecureIntake(
         // Strict mode: propagate failure
         throw hybridErr;
       }
-      // Best-effort mode: Kyber failed (CSP/WASM), retry X25519-only
-      // hybridEncrypt does X25519 wrap before Kyber, so we call it again
-      // but we need to bypass Kyber. Since pqc-shared doesn't expose
-      // X25519-only encrypt, we replicate the X25519 path using the same
-      // primitives that hybridEncrypt uses internally.
-      console.warn("[Intake] Hybrid encryption failed, falling back to X25519-only:", hybridErr);
+      // Best-effort mode: Kyber failed (CSP/WASM), fall back to X25519-only
+      const reason = hybridErr instanceof Error ? hybridErr.message : String(hybridErr);
+      const downgradeEvent: DowngradeEvent = {
+        event: "omnituum.crypto.downgrade",
+        reason,
+        suite: X25519_ONLY_SUITE,
+        pqcUsed: false,
+        requireKyber: false,
+        userAgent: typeof navigator !== "undefined" ? navigator.userAgent : undefined,
+        cspHint: reason.includes("CSP") || reason.includes("wasm")
+          ? "WASM compilation likely blocked by Content-Security-Policy"
+          : undefined,
+      };
+      console.warn("[Intake] Crypto downgrade:", downgradeEvent);
+      config.onDowngrade?.(downgradeEvent);
       encrypted = await encryptX25519Only(plaintextBytes, config.publicKeys.x25519PubHex);
     }
 
@@ -225,7 +234,8 @@ function hkdfFlex(ikm: Uint8Array, salt: string, info: string): Uint8Array {
  * Produces an envelope structurally compatible with HybridEnvelope
  * but with empty Kyber fields and suite set to "x25519".
  */
-async function encryptX25519Only(
+/** @internal Exported for golden-vector tests */
+export async function encryptX25519Only(
   plaintext: Uint8Array,
   recipientX25519PubHex: string
 ): Promise<HybridEnvelope> {

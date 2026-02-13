@@ -35,7 +35,7 @@
  */
 
 // Core submission
-export { submitSecureIntake } from "./submit.js";
+export { submitSecureIntake, encryptX25519Only } from "./submit.js";
 
 // Crypto capability
 export {
@@ -65,4 +65,5 @@ export type {
   RateLimitConfig,
   PendingSubmission,
   HybridPublicKeys,
+  DowngradeEvent,
 } from "./types.js";

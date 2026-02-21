@@ -22,7 +22,7 @@ import {
 import { tryHybridEncryptLazy } from "./hybrid-lazy.js";
 import { setCachedKyberStatus } from "./capability.js";
 import type { IntakeConfig, SubmitOptions, SubmitResult, DowngradeEvent, DowngradeReason } from "./types.js";
-import type { HybridEnvelope } from "./envelope-types.js";
+import type { OmniHybridV1 } from "@omnituum/envelope-registry";
 import { generateRequestId } from "./id.js";
 import { checkCryptoCapability } from "./capability.js";
 import {
@@ -108,7 +108,7 @@ export async function submitSecureIntake(
     }
 
     // Encrypt: attempt hybrid (lazy), fall back to X25519-only if allowed
-    let encrypted: HybridEnvelope;
+    let encrypted: OmniHybridV1;
     let pqcUsed = false;
 
     if (!attemptHybrid) {
@@ -252,7 +252,7 @@ function hkdfFlex(ikm: Uint8Array, salt: string, info: string): Uint8Array {
 
 /**
  * Encrypt using X25519 ECDH only (classical, no WASM required).
- * Produces an envelope structurally compatible with HybridEnvelope
+ * Produces an envelope structurally compatible with OmniHybridV1
  * but with empty Kyber fields and suite set to "x25519".
  *
  * @internal Exported for golden-vector tests
@@ -260,7 +260,7 @@ function hkdfFlex(ikm: Uint8Array, salt: string, info: string): Uint8Array {
 export async function encryptX25519Only(
   plaintext: Uint8Array,
   recipientX25519PubHex: string
-): Promise<HybridEnvelope> {
+): Promise<OmniHybridV1> {
   // 1. Generate random content key
   const CK = rand32();
 

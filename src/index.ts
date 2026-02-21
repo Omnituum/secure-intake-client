@@ -42,4 +42,6 @@ export type {
   DowngradeReason,
 } from "./types.js";
 
-export type { HybridEnvelope } from "./envelope-types.js";
+export type { OmniHybridV1 } from "@omnituum/envelope-registry";
+/** @deprecated Use OmniHybridV1 from @omnituum/envelope-registry */
+export type { OmniHybridV1 as HybridEnvelope } from "@omnituum/envelope-registry";

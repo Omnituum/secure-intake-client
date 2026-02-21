@@ -8,7 +8,7 @@
  * Invariant: nothing else in secure-intake-client imports pqc-shared directly.
  */
 
-import type { HybridEnvelope } from "./envelope-types.js";
+import type { OmniHybridV1 } from "@omnituum/envelope-registry";
 
 /** Cached module reference after first successful load */
 let pqcModule: typeof import("@omnituum/pqc-shared") | null = null;
@@ -50,7 +50,7 @@ export async function probeKyberLazy(): Promise<boolean> {
 export async function tryHybridEncryptLazy(
   plaintext: Uint8Array,
   publicKeys: { x25519PubHex: string; kyberPubB64: string }
-): Promise<HybridEnvelope> {
+): Promise<OmniHybridV1> {
   const mod = await tryLoadHybrid();
   if (!mod) {
     throw new Error(

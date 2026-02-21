@@ -125,10 +125,12 @@ export function secretboxRaw(
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// CONSTANTS (matching pqc-shared envelope format exactly)
+// CONSTANTS (from canonical envelope registry)
 // ═══════════════════════════════════════════════════════════════════════════
 
-export const ENVELOPE_VERSION = "omnituum.hybrid.v1";
+import { OMNI_VERSIONS } from '@omnituum/envelope-registry';
+
+export const ENVELOPE_VERSION = OMNI_VERSIONS.HYBRID_V1;
 export const ENVELOPE_AEAD = "xsalsa20poly1305";
 
 // Re-export nacl for X25519 operations

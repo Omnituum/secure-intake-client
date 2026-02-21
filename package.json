@@ -61,7 +61,7 @@
   "homepage": "https://github.com/Omnituum/secure-intake-client#readme",
   "dependencies": {
     "@noble/hashes": "~2.0.0",
-    "@omnituum/envelope-registry": "file:../envelope-registry",
+    "@omnituum/envelope-registry": "github:Omnituum/envelope-registry#v0.1.2",
     "@omnituum/pqc-shared": "^0.3.0",
     "tweetnacl": "^1.0.3"
   },

@@ -22,7 +22,7 @@ import {
 import { tryHybridEncryptLazy } from "./hybrid-lazy.js";
 import { setCachedKyberStatus } from "./capability.js";
 import type { IntakeConfig, SubmitOptions, SubmitResult, DowngradeEvent, DowngradeReason } from "./types.js";
-import type { OmniHybridV1 } from "@omnituum/envelope-registry";
+import type { OmniHybridV1, OmniHybridV2 } from "@omnituum/envelope-registry";
 import { generateRequestId } from "./id.js";
 import { checkCryptoCapability } from "./capability.js";
 import {
@@ -107,8 +107,10 @@ export async function submitSecureIntake(
       };
     }
 
-    // Encrypt: attempt hybrid (lazy), fall back to X25519-only if allowed
-    let encrypted: OmniHybridV1;
+    // Encrypt: attempt hybrid v2 (lazy), fall back to X25519-only if allowed.
+    // Hybrid success => OmniHybridV2 (AND-combined KEK). Fallback => OmniHybridV1
+    // x25519-only classical shape (see encryptX25519Only; gated by #5).
+    let encrypted: OmniHybridV1 | OmniHybridV2;
     let pqcUsed = false;
 
     if (!attemptHybrid) {

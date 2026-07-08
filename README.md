@@ -136,7 +136,7 @@ This package uses **Kyber WASM** for post-quantum encryption. Most modern bundle
 
 ### Vite (Recommended)
 
-Works out of the box. The `kyber-crystals` WASM is loaded automatically.
+Works out of the box. Post-quantum hybrid encryption (ML-KEM-1024 via `@omnituum/pqc-shared`) is loaded lazily on first use.
 
 ```ts
 // vite.config.ts - no special config needed

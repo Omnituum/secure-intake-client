@@ -35,8 +35,8 @@
     "clean": "rm -rf dist",
     "typecheck": "tsc --noEmit",
     "test": "tsx test/normalization.test.ts",
-    "pretest": "npm run build",
-    "prepare": "npm run build"
+    "pretest": "pnpm build",
+    "prepare": "pnpm build"
   },
   "keywords": [
     "intake",
@@ -61,8 +61,8 @@
   "homepage": "https://github.com/Omnituum/secure-intake-client#readme",
   "dependencies": {
     "@noble/hashes": "~2.0.0",
-    "@omnituum/envelope-registry": "github:Omnituum/envelope-registry#v0.1.2",
-    "@omnituum/pqc-shared": "^0.3.0",
+    "@omnituum/envelope-registry": "workspace:*",
+    "@omnituum/pqc-shared": "workspace:*",
     "tweetnacl": "^1.0.3"
   },
   "devDependencies": {

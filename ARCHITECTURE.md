@@ -47,9 +47,9 @@ Private keys never exist on the server, in environment variables, or in any depl
 | 1    | Browser | User fills form |
 | 2    | Browser | `canonicalize()` normalizes fields (lowercase email, sort arrays, LF line endings) |
 | 3    | Browser | `BLAKE3(canonicalized)` produces deterministic 64-char hex ID |
-| 4    | Browser | `hybridEncrypt()` with X25519 + Kyber-1024 via AES-256-GCM |
-| 5    | Browser | POST envelope `{ v, id, encrypted }` to `/api/intake` |
-| 6    | Server  | Validate envelope shape, verify HMAC (optional), hash IP |
+| 4    | Browser | `hybridEncrypt()` → v2 hybrid (X25519 + ML-KEM-1024, AND-combined KEK, NaCl secretbox AEAD) |
+| 5    | Browser | POST envelope `{ v, id, pqcUsed, encrypted }` to `/api/intake` |
+| 6    | Server  | Validate shape, enforce PQC + rate limit, derive keyed stored id, hash IP |
 | 7    | Server  | INSERT ciphertext into D1 (`UNIQUE` on `id` for dedup) |
 | 8    | Server  | Return `{ ok, id, status: "created" | "duplicate" }` |
 | 9    | Offline | Operator decrypts with private key (never on server) |
@@ -71,10 +71,10 @@ The `v` field allows future protocol versions. The `id` field enables idempotent
 | Primitive       | Purpose                       | Library                          |
 |-----------------|-------------------------------|----------------------------------|
 | X25519          | Classical key agreement (ECDH)| `@noble/curves` via `@omnituum/pqc-shared` |
-| Kyber-1024      | Post-quantum key encapsulation| `kyber-crystals` WASM            |
-| AES-256-GCM     | Symmetric encryption          | Web Crypto API                   |
-| BLAKE3          | Deterministic ID hashing      | `@noble/hashes`                  |
-| HMAC-SHA256     | Request authentication (opt.) | Web Crypto API (server-side)     |
+| ML-KEM-1024     | Post-quantum key encapsulation (FIPS 203) | `@noble/post-quantum` via `@omnituum/pqc-shared` |
+| XSalsa20-Poly1305 | Authenticated symmetric encryption (NaCl secretbox) | `tweetnacl`      |
+| BLAKE3          | Deterministic content-id hashing | `@noble/hashes`               |
+| HMAC-SHA256     | Stored-id derivation + IP hashing | Web Crypto API (server-side)  |
 
 ## Client Library API
 
@@ -191,8 +191,9 @@ CREATE TABLE intake_events (
 3. Envelope has required fields: `v`, `id`, `encrypted`
 4. `id` is 64-char lowercase hex
 5. `v` is in `ALLOWED_VERSIONS`
-6. HMAC-SHA256 matches (if `INTAKE_HMAC_SECRET` configured)
-7. CORS origin is in `ALLOWED_ORIGINS`
+6. Rate limit not exceeded (per salted IP+origin; fail closed)
+7. Post-quantum policy satisfied (`REQUIRE_PQC`: v2 hybrid + `pqcUsed`)
+8. CORS origin is in `ALLOWED_ORIGINS`
 
 ### What the Server Does NOT Do
 
@@ -207,7 +208,8 @@ CREATE TABLE intake_events (
 |-----------------------|----------|-------------|
 | `ALLOWED_ORIGINS`     | Yes      | Comma-separated CORS allowlist |
 | `INTAKE_IP_SALT`      | Yes      | 64-char hex for IP hashing (`openssl rand -hex 32`) |
-| `INTAKE_HMAC_SECRET`  | No       | Enables HMAC request authentication |
+| `INTAKE_ID_SECRET`    | Recommended | HMAC secret for non-invertible stored ids |
+| `REQUIRE_PQC`         | No (default on) | Post-quantum enforcement (fail closed) |
 | `ADMIN_EMAILS`        | No       | Comma-separated admin email allowlist |
 | `ADMIN_UI_ORIGIN`     | No       | CORS origin for admin API |
 | `NOTIFY_WEBHOOK_URL`  | No       | Webhook for new submission notifications (metadata only) |

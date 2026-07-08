@@ -19,8 +19,8 @@ The server receives only:
 | Primitive | Purpose | Library |
 |-----------|---------|---------|
 | X25519 | Key agreement (classical) | `@noble/curves` via `@omnituum/pqc-shared` |
-| Kyber-1024 | Key encapsulation (post-quantum) | `kyber-crystals` WASM |
-| AES-256-GCM | Symmetric encryption | Web Crypto API |
+| ML-KEM-1024 | Key encapsulation (post-quantum, FIPS 203) | `@noble/post-quantum` via `@omnituum/pqc-shared` |
+| XSalsa20-Poly1305 (NaCl secretbox) | Authenticated symmetric encryption | `tweetnacl` |
 | BLAKE3 | Deterministic ID hashing | `@noble/hashes` |
 
 ## Supported Versions

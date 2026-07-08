@@ -8,7 +8,7 @@
  * Invariant: nothing else in secure-intake-client imports pqc-shared directly.
  */
 
-import type { OmniHybridV1 } from "@omnituum/envelope-registry";
+import type { OmniHybridV2 } from "@omnituum/envelope-registry";
 
 /** Cached module reference after first successful load */
 let pqcModule: typeof import("@omnituum/pqc-shared") | null = null;
@@ -46,11 +46,16 @@ export async function probeKyberLazy(): Promise<boolean> {
 /**
  * Attempt hybrid encryption via lazy-loaded pqc-shared.
  * Throws if the module can't be loaded or encryption fails.
+ *
+ * Emits an OmniHybridV2 envelope: a single content-key wrap under an
+ * AND-combined KEK (HKDF over both the ML-KEM-1024 and X25519 shared secrets,
+ * transcript-bound). Breaking either primitive alone cannot unwrap it. The
+ * legacy v1 "independent wraps" construction is never produced.
  */
 export async function tryHybridEncryptLazy(
   plaintext: Uint8Array,
   publicKeys: { x25519PubHex: string; kyberPubB64: string }
-): Promise<OmniHybridV1> {
+): Promise<OmniHybridV2> {
   const mod = await tryLoadHybrid();
   if (!mod) {
     throw new Error(
